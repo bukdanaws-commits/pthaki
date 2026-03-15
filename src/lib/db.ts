@@ -610,6 +610,18 @@ class DatabaseClient {
       return data as Tables<'MenuItem'>
     },
     
+    create: async (args: { data: InsertTables<'MenuItem'> }) => {
+      const client = this.getClient()
+      const { data, error } = await client
+        .from('MenuItem')
+        .insert(args.data)
+        .select()
+        .single()
+      
+      if (error) throw error
+      return data as Tables<'MenuItem'>
+    },
+    
     upsert: async (args: { where: { id: string }; create: InsertTables<'MenuItem'>; update: UpdateTables<'MenuItem'> }) => {
       const client = this.getClient()
       const existing = await this.findUnique({ where: args.where })
