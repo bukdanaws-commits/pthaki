@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,35 +15,25 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Search participants by email (case-insensitive, partial match)
-    // Using mode: 'insensitive' for SQLite
-    const participants = await db.participant.findMany({
-      where: {
-        email: {
-          contains: email,
-          mode: 'insensitive',
-        }
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        company: true,
-        isCheckedIn: true,
-        qrCode: true,
-        photoUrl: true,
-      },
-      take: 10, // Limit results
-      orderBy: {
-        name: 'asc'
-      }
-    })
+    // Search participants by email using Supabase
+    // Using ilike for case-insensitive partial match
+    const { data: participants, error } = await supabase
+      .from('Participant')
+      .select('id, name, email, company, isCheckedIn, qrCode, photoUrl')
+      .ilike('email', `%${email}%`)
+      .order('name', { ascending: true })
+      .limit(10)
 
-    console.log('✅ Found participants:', participants.length)
+    if (error) {
+      console.error('Search error:', error)
+      throw error
+    }
+
+    console.log('✅ Found participants:', participants?.length || 0)
 
     return NextResponse.json({
       success: true,
-      data: participants
+      data: participants || []
     })
   } catch (error) {
     console.error('Search error:', error)

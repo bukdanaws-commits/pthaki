@@ -1,8 +1,20 @@
 import { createServiceClient } from './supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import type { Database, Tables, InsertTables, UpdateTables } from './supabase/database.types'
 
 // Re-export types
 export type { Database, Tables, InsertTables, UpdateTables }
+
+// Create a direct Supabase client for direct access (for cases where db helper is not enough)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+})
 
 // Database helper that mimics Prisma-like API but uses Supabase
 // This provides a familiar interface for easier migration
