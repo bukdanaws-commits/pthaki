@@ -1,15 +1,23 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { CheckCircle, XCircle, User, Loader2, RefreshCw, Camera, CameraOff, Upload, Mail, Search } from 'lucide-react'
+import { CheckCircle, XCircle, User, Loader2, Camera, CameraOff, Upload, Mail, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 interface CheckInResult {
   success: boolean
@@ -23,6 +31,7 @@ interface CheckInResult {
     company: string | null
     photoUrl: string | null
     qrCode: string
+    isCheckedIn?: boolean
   }
 }
 
@@ -36,22 +45,14 @@ interface ParticipantSearch {
   photoUrl?: string | null
 }
 
-const CHECKIN_DESKS = [
-  { id: 1, name: 'Desk 1', description: 'Main Entrance' },
-  { id: 2, name: 'Desk 2', description: 'Side Entrance' },
-  { id: 3, name: 'Desk 3', description: 'VIP Entrance' },
-  { id: 4, name: 'Desk 4', description: 'Express Entrance' },
-]
-
 export default function CheckinSection() {
-  const [selectedDesk, setSelectedDesk] = useState<number>(1)
   const [scanResult, setScanResult] = useState<CheckInResult | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [manualQrCode, setManualQrCode] = useState('')
   const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(null)
   const [scannerActive, setScannerActive] = useState(false)
   
-  // New states for email search
+  // Email search states
   const [emailSearch, setEmailSearch] = useState('')
   const [searchResults, setSearchResults] = useState<ParticipantSearch[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -76,7 +77,7 @@ export default function CheckinSection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           qrCode,
-          deskNumber: selectedDesk,
+          deskNumber: 1,
         }),
       })
 
@@ -105,7 +106,7 @@ export default function CheckinSection() {
     } finally {
       setIsProcessing(false)
     }
-  }, [isProcessing, selectedDesk, toast])
+  }, [isProcessing, toast])
 
   // Search participant by email
   const searchByEmail = useCallback(async (email: string) => {
@@ -185,13 +186,11 @@ export default function CheckinSection() {
     const checkCamera = async () => {
       try {
         if (!window.isSecureContext) {
-          console.log('Not a secure context, camera may not work')
           setCameraAvailable(false)
           return
         }
         
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          console.log('MediaDevices API not available')
           setCameraAvailable(false)
           return
         }
@@ -200,7 +199,6 @@ export default function CheckinSection() {
         stream.getTracks().forEach(track => track.stop())
         setCameraAvailable(true)
       } catch (error) {
-        console.log('Camera not available:', error)
         setCameraAvailable(false)
       }
     }
@@ -276,7 +274,6 @@ export default function CheckinSection() {
   }
 
   const handleEmailCheckIn = (participant: ParticipantSearch) => {
-    // Use qrCode for check-in, not id
     processCheckIn(participant.qrCode)
     setEmailSearch('')
     setSearchResults([])
@@ -290,333 +287,264 @@ export default function CheckinSection() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* QR Scanner */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Camera className="h-5 w-5" />
-            QR Scanner
-          </CardTitle>
-          <CardDescription>
-            Scan QR code atau gunakan metode alternatif
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Desk Selection */}
-          <div className="space-y-3">
-            <Label>Pilih Loket Check-in</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {CHECKIN_DESKS.map((desk) => (
-                <div
-                  key={desk.id}
-                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    selectedDesk === desk.id
-                      ? 'border-primary bg-primary/5'
-                      : 'hover:bg-muted/50'
-                  }`}
-                  onClick={() => setSelectedDesk(desk.id)}
-                >
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                    selectedDesk === desk.id ? 'border-primary' : 'border-muted-foreground'
-                  }`}>
-                    {selectedDesk === desk.id && (
-                      <div className="w-2 h-2 rounded-full bg-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{desk.name}</p>
-                    <p className="text-xs text-muted-foreground">{desk.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
+    <Card className="max-w-4xl mx-auto">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-xl">
+          <CheckCircle className="h-5 w-5 text-[#47b2e4]" />
+          Check-in Peserta
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Input Section */}
+        <div className="space-y-4">
           {/* Hidden element for file scanning */}
           <div id="qr-reader-hidden" style={{ display: 'none' }} />
-
+          
           {/* Scanner Area */}
-          <div className="relative">
-            {cameraAvailable === null ? (
-              <div className="w-full h-[280px] flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-lg border">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Scanner / Camera */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Scan QR Code</Label>
+              <div className="relative rounded-lg overflow-hidden border bg-slate-50 dark:bg-slate-900" style={{ minHeight: '200px' }}>
+                {cameraAvailable === null ? (
+                  <div className="w-full h-[200px] flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : cameraAvailable === false ? (
+                  <div className="w-full h-[200px] flex flex-col items-center justify-center p-4 text-center">
+                    <CameraOff className="h-10 w-10 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">Kamera tidak tersedia</p>
+                    <p className="text-xs text-muted-foreground mt-1">Gunakan metode lain di bawah</p>
+                  </div>
+                ) : scannerActive ? (
+                  <div id="qr-reader" className={`w-full ${isProcessing ? 'opacity-50' : ''}`} />
+                ) : (
+                  <div 
+                    className="w-full h-[200px] flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    onClick={startScanner}
+                  >
+                    <Camera className="h-10 w-10 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">Klik untuk mulai scanner</p>
+                  </div>
+                )}
+                
+                {isProcessing && scannerActive && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
+                  </div>
+                )}
               </div>
-            ) : cameraAvailable === false ? (
-              <div className="w-full h-[280px] flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-lg border p-4 text-center">
-                <CameraOff className="h-12 w-12 text-muted-foreground mb-3" />
-                <p className="text-muted-foreground font-medium">Kamera Tidak Tersedia</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Gunakan metode alternatif di bawah
-                </p>
-                <div className="flex gap-2 mt-3">
-                  <Badge variant="outline">Upload QR</Badge>
-                  <Badge variant="outline">Cari Email</Badge>
+              
+              {/* Scanner Controls */}
+              {cameraAvailable && (
+                <div className="flex gap-2">
+                  {scannerActive ? (
+                    <Button variant="outline" size="sm" onClick={stopScanner} className="flex-1">
+                      Stop Scanner
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={startScanner} className="flex-1">
+                      Start Scanner
+                    </Button>
+                  )}
                 </div>
-              </div>
-            ) : scannerActive ? (
-              <div
-                id="qr-reader"
-                className={`w-full overflow-hidden rounded-lg border bg-slate-100 dark:bg-slate-800 ${isProcessing ? 'opacity-50' : ''}`}
-                style={{ minHeight: '280px' }}
-              />
-            ) : (
-              <div 
-                className="w-full h-[280px] flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-lg border cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                onClick={startScanner}
-              >
-                <Camera className="h-12 w-12 text-muted-foreground mb-3" />
-                <p className="text-muted-foreground font-medium">Klik untuk Mulai Scanner</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Akses kamera diperlukan
-                </p>
-              </div>
-            )}
-            
-            {isProcessing && scannerActive && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
-                <Loader2 className="h-8 w-8 animate-spin text-white" />
-              </div>
-            )}
-          </div>
-
-          {/* Scanner Controls */}
-          {cameraAvailable && (
-            <div className="flex gap-2">
-              {scannerActive ? (
-                <Button variant="outline" onClick={stopScanner} className="flex-1">
-                  Stop Scanner
-                </Button>
-              ) : (
-                <Button variant="outline" onClick={startScanner} className="flex-1">
-                  Start Scanner
-                </Button>
               )}
             </div>
-          )}
+            
+            {/* Alternative Methods */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Metode Alternatif</Label>
+              <Tabs defaultValue="manual" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 h-9">
+                  <TabsTrigger value="manual" className="text-xs py-1">
+                    <Camera className="h-3 w-3 mr-1" />
+                    Manual
+                  </TabsTrigger>
+                  <TabsTrigger value="upload" className="text-xs py-1">
+                    <Upload className="h-3 w-3 mr-1" />
+                    Upload
+                  </TabsTrigger>
+                  <TabsTrigger value="email" className="text-xs py-1">
+                    <Mail className="h-3 w-3 mr-1" />
+                    Email
+                  </TabsTrigger>
+                </TabsList>
 
-          {/* Alternative Methods Tabs */}
-          <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="upload" className="text-xs">
-                <Upload className="h-3 w-3 mr-1" />
-                Upload QR
-              </TabsTrigger>
-              <TabsTrigger value="manual" className="text-xs">
-                <Camera className="h-3 w-3 mr-1" />
-                Manual
-              </TabsTrigger>
-              <TabsTrigger value="email" className="text-xs">
-                <Mail className="h-3 w-3 mr-1" />
-                Email
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Upload QR Image */}
-            <TabsContent value="upload" className="mt-3">
-              <div className="space-y-2">
-                <Label className="text-sm">Upload Gambar QR Code</Label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isProcessing}
-                  className="w-full h-20 border-dashed"
-                >
-                  <div className="flex flex-col items-center gap-1">
-                    <Upload className="h-6 w-6" />
-                    <span className="text-sm">
-                      {isProcessing ? 'Memproses...' : 'Klik untuk upload gambar QR'}
-                    </span>
-                  </div>
-                </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  Format: JPG, PNG, WEBP
-                </p>
-              </div>
-            </TabsContent>
-
-            {/* Manual QR Entry */}
-            <TabsContent value="manual" className="mt-3">
-              <div className="space-y-2">
-                <Label className="text-sm">Masukkan Kode QR Manual</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Contoh: HKI-2025-0001"
-                    value={manualQrCode}
-                    onChange={(e) => setManualQrCode(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => e.key === 'Enter' && handleManualCheckIn()}
-                  />
-                  <Button onClick={handleManualCheckIn} disabled={isProcessing}>
-                    Check In
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Format: HKI-2025-XXXX (contoh: HKI-2025-0001)
-                </p>
-              </div>
-            </TabsContent>
-
-            {/* Email Search */}
-            <TabsContent value="email" className="mt-3">
-              <div className="space-y-2">
-                <Label className="text-sm">Cari Peserta berdasarkan Email</Label>
-                <div className="relative">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <TabsContent value="manual" className="mt-2">
+                  <div className="flex gap-2">
                     <Input
-                      placeholder="Masukkan email peserta..."
-                      value={emailSearch}
-                      onChange={(e) => setEmailSearch(e.target.value)}
-                      className="pl-10"
+                      placeholder="QR Code: EVT-XXXX-XXXX"
+                      value={manualQrCode}
+                      onChange={(e) => setManualQrCode(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => e.key === 'Enter' && handleManualCheckIn()}
+                      className="h-9"
                     />
-                    {isSearching && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-                    )}
+                    <Button size="sm" onClick={handleManualCheckIn} disabled={isProcessing}>
+                      Check In
+                    </Button>
                   </div>
-                  
-                  {/* Search Results */}
-                  {searchResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {searchResults.map((participant) => (
-                        <div
-                          key={participant.id}
-                          className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
-                          onClick={() => handleEmailCheckIn(participant)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="text-xs">
-                                {participant.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium text-sm">{participant.name}</p>
-                              <p className="text-xs text-muted-foreground">{participant.email}</p>
+                </TabsContent>
+
+                <TabsContent value="upload" className="mt-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isProcessing}
+                    className="w-full h-9"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Gambar QR
+                  </Button>
+                </TabsContent>
+
+                <TabsContent value="email" className="mt-2">
+                  <div className="relative">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Cari email peserta..."
+                        value={emailSearch}
+                        onChange={(e) => setEmailSearch(e.target.value)}
+                        className="pl-9 h-9"
+                      />
+                      {isSearching && (
+                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                    
+                    {/* Search Results */}
+                    {searchResults.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                        {searchResults.map((participant) => (
+                          <div
+                            key={participant.id}
+                            className="flex items-center justify-between p-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                            onClick={() => handleEmailCheckIn(participant)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-7 w-7">
+                                <AvatarFallback className="text-xs bg-[#37517e] text-white">
+                                  {participant.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-sm">{participant.name}</p>
+                                <p className="text-xs text-muted-foreground">{participant.email}</p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
                             {participant.isCheckedIn && (
                               <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                                Sudah Check-in
+                                ✓
                               </Badge>
                             )}
-                            <Button size="sm" variant="ghost">
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* No results */}
-                  {emailSearch.length >= 2 && !isSearching && searchResults.length === 0 && (
-                    <p className="text-sm text-muted-foreground mt-2 text-center">
-                      Tidak ada peserta dengan email "{emailSearch}"
-                    </p>
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      {/* Scan Result */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {scanResult ? (
-              scanResult.success || scanResult.alreadyCheckedIn ? (
-                <>
-                  {scanResult.success ? (
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                  ) : (
-                    <User className="h-5 w-5 text-yellow-500" />
-                  )}
-                  Hasil Check-in
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-5 w-5 text-red-500" />
-                  Error
-                </>
-              )
-            ) : (
-              <>
-                <User className="h-5 w-5" />
-                Hasil Check-in
-              </>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {scanResult ? (
-            <div className="space-y-4">
-              {scanResult.participant && (
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-16 w-16">
-                    <AvatarImage src={scanResult.participant.photoUrl || undefined} />
-                    <AvatarFallback className="text-lg bg-[#37517e] text-white">
-                      {scanResult.participant.name
-                        .split(' ')
-                        .map((n) => n[0])
-                        .join('')
-                        .toUpperCase()
-                        .slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">
-                      {scanResult.participant.name}
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {scanResult.participant.company || 'Tidak ada perusahaan'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {scanResult.participant.email}
-                    </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
+        </div>
+
+        {/* Result Table */}
+        <div className="border rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50 dark:bg-slate-800">
+                <TableHead className="w-[60px]">Foto</TableHead>
+                <TableHead>Nama Peserta</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Perusahaan</TableHead>
+                <TableHead className="w-[100px]">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {scanResult && scanResult.participant ? (
+                <TableRow className={scanResult.success ? 'bg-green-50 dark:bg-green-900/10' : scanResult.alreadyCheckedIn ? 'bg-yellow-50 dark:bg-yellow-900/10' : 'bg-red-50 dark:bg-red-900/10'}>
+                  <TableCell>
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={scanResult.participant.photoUrl || undefined} />
+                      <AvatarFallback className="bg-[#37517e] text-white">
+                        {scanResult.participant.name
+                          .split(' ')
+                          .map((n) => n[0])
+                          .join('')
+                          .toUpperCase()
+                          .slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </TableCell>
+                  <TableCell className="font-medium">{scanResult.participant.name}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{scanResult.participant.email}</TableCell>
+                  <TableCell className="text-sm">{scanResult.participant.company || '-'}</TableCell>
+                  <TableCell>
+                    {scanResult.success ? (
+                      <Badge className="bg-green-500 text-white">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Berhasil
+                      </Badge>
+                    ) : scanResult.alreadyCheckedIn ? (
+                      <Badge variant="outline" className="border-yellow-500 text-yellow-600">
+                        Sudah CI
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Gagal
+                      </Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-12">
+                    <div className="flex flex-col items-center text-muted-foreground">
+                      <User className="h-10 w-10 mb-2 opacity-50" />
+                      <p className="text-sm">Scan QR code untuk melihat info peserta</p>
+                      <p className="text-xs mt-1">atau cari berdasarkan email</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
               )}
+            </TableBody>
+          </Table>
+        </div>
 
-              <div
-                className={`p-4 rounded-lg ${
-                  scanResult.success
-                    ? 'bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                    : scanResult.alreadyCheckedIn
-                    ? 'bg-yellow-50 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-                    : 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                }`}
-              >
-                <p className="font-medium">{scanResult.message || scanResult.error}</p>
-              </div>
+        {/* Message */}
+        {scanResult && (
+          <div className={`p-3 rounded-lg text-sm ${
+            scanResult.success
+              ? 'bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+              : scanResult.alreadyCheckedIn
+              ? 'bg-yellow-50 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+              : 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+          }`}>
+            <p className="font-medium">{scanResult.message || scanResult.error}</p>
+          </div>
+        )}
 
-              <Button
-                variant="outline"
-                onClick={clearResult}
-                className="w-full gap-2"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Scan Peserta Lain
-              </Button>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Scan QR code untuk melihat info peserta</p>
-              <p className="text-sm mt-2">atau gunakan Email untuk mencari</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        {/* Action Button */}
+        {scanResult && (
+          <Button
+            variant="outline"
+            onClick={clearResult}
+            className="w-full gap-2"
+          >
+            <Loader2 className="h-4 w-4" />
+            Scan Peserta Lain
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   )
 }
