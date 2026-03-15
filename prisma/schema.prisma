@@ -1,0 +1,497 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// EVENT MANAGEMENT
+// =====================================================
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  date        DateTime
+  endDate     DateTime?
+  location    String?
+  isActive    Boolean  @default(true)
+  
+  // Landing Page Content
+  tagline        String?   // Event tagline
+  logoUrl        String?   // Event logo URL
+  bannerUrl      String?   // Hero banner image
+  primaryColor   String?   @default("#10b981") // Primary brand color
+  secondaryColor String?   @default("#0d9488") // Secondary brand color
+  
+  // Event Details
+  organizer      String?   // Organizer name
+  website        String?   // Event website
+  registrationStart DateTime?
+  registrationEnd   DateTime?
+  
+  // Social Links
+  instagram      String?
+  twitter        String?
+  linkedin       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  participants  Participant[]
+  checkIns      CheckIn[]
+  displayQueue  DisplayQueue[]
+  menuCategories MenuCategory[]
+  menuItems     MenuItem[]
+  booths        Booth[]
+  claims        Claim[]
+  scanLogs      ScanLog[]
+  stats         EventStats?
+  adminUsers    AdminUser[]
+  announcements Announcement[]
+  schedules     Schedule[]
+  sponsors      Sponsor[]
+}
+
+// =====================================================
+// ADMIN USERS (RBAC)
+// =====================================================
+
+model AdminUser {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  password    String   // Hashed password
+  
+  // Role: "admin" (full access), "panitia" (scanner only - check-in & claim)
+  role        String   @default("panitia")
+  
+  // Event assignment (null = all events access for admin)
+  eventId     String?
+  event       Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  // Booth/Desk assignment for panitia role
+  assignedType String? // "checkin" or "claim"
+  assignedId   String? // booth ID or desk number
+  
+  isActive    Boolean  @default(true)
+  lastLoginAt DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([email])
+  @@index([eventId])
+}
+
+// =====================================================
+// PARTICIPANTS (Core Data)
+// =====================================================
+
+model Participant {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  // Personal Information
+  name        String
+  email       String
+  phone       String
+  company     String?
+  bio         String?
+  
+  // Media Files
+  photoUrl    String?   // Original uploaded photo
+  aiPhotoUrl  String?   // AI-generated badge photo
+  qrCode      String    @unique // Unique QR code identifier
+  qrCodeUrl   String?   // QR code image URL (base64 or URL)
+  
+  // Check-in Status
+  isCheckedIn Boolean   @default(false)
+  checkInTime DateTime?
+  checkInDesk Int?      // Which desk (1-4)
+  
+  // Claim Counters (auto-updated by triggers/API)
+  foodClaims  Int       @default(0)
+  drinkClaims Int       @default(0)
+  
+  // Claim Limits (configurable per participant)
+  maxFoodClaims  Int    @default(2)
+  maxDrinkClaims Int    @default(1)
+  
+  // Denormalized for performance
+  lastClaimAt    DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  checkIns    CheckIn[]
+  displayQueue DisplayQueue[]
+  claims      Claim[]
+  scanLogs    ScanLog[]
+  
+  @@index([qrCode])
+  @@index([email])
+  @@index([eventId])
+  @@index([isCheckedIn])
+}
+
+// =====================================================
+// CHECK-INS (Registration Desks)
+// =====================================================
+
+model CheckIn {
+  id             String   @id @default(cuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId  String   @unique
+  participant    Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  
+  deskNumber     Int      // 1-4 for the 4 check-in desks
+  checkedInAt    DateTime @default(now())
+  
+  // Device/Operator info
+  deviceName     String?
+  operatorId     String?
+  
+  scanLog        ScanLog?
+  
+  @@index([eventId])
+  @@index([participantId])
+  @@index([checkedInAt])
+}
+
+// =====================================================
+// DISPLAY QUEUE (Monitor Realtime)
+// =====================================================
+
+model DisplayQueue {
+  id             String   @id @default(cuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId  String
+  participant    Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  
+  // Denormalized for fast query
+  name           String
+  company        String?
+  photoUrl       String?
+  
+  displayOrder   Int      @default(0)
+  isDisplayed    Boolean  @default(false)
+  displayDuration Int     @default(5000) // milliseconds
+  displayedAt    DateTime?
+  expiresAt      DateTime @default(now()) // Auto cleanup time
+  
+  createdAt      DateTime @default(now())
+  
+  @@index([eventId])
+  @@index([isDisplayed])
+  @@index([expiresAt])
+}
+
+// =====================================================
+// MENU CATEGORIES (Food/Drink)
+// =====================================================
+
+model MenuCategory {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  name        String   // "Food" or "Drink"
+  description String?
+  
+  // Limits for this category
+  maxClaimsPerParticipant Int @default(2) // 2 for food, 1 for drink
+  
+  createdAt   DateTime @default(now())
+  
+  menuItems   MenuItem[]
+  
+  @@unique([eventId, name])
+  @@index([eventId])
+}
+
+// =====================================================
+// MENU ITEMS (Stock Management)
+// =====================================================
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  imageUrl    String?
+  
+  // Stock Management
+  initialStock  Int      @default(0)
+  currentStock  Int      @default(0)
+  
+  // Stats (denormalized)
+  totalClaims   Int      @default(0)
+  
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  claims      Claim[]
+  
+  @@index([eventId])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+// =====================================================
+// BOOTHS (Claim Stations)
+// =====================================================
+
+model Booth {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  name        String   // "Food Booth 1", "Drink Booth 1", etc.
+  boothType   String   // "food" or "drink"
+  boothNumber Int      // 1-4 for food, 1-2 for drink
+  
+  // Assigned category
+  allowedCategory String? // "Food" or "Drink"
+  
+  // Stats (denormalized)
+  totalClaims   Int      @default(0)
+  
+  // Device info
+  deviceName     String?
+  isActive       Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  claims      Claim[]
+  
+  @@unique([eventId, boothType, boothNumber])
+  @@index([eventId])
+  @@index([boothType])
+  @@index([isActive])
+}
+
+// =====================================================
+// CLAIMS (Transaction Log)
+// =====================================================
+
+model Claim {
+  id             String   @id @default(cuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId  String
+  participant    Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  menuItemId     String
+  menuItem       MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  boothId        String
+  booth          Booth   @relation(fields: [boothId], references: [id], onDelete: Cascade)
+  
+  // Category for quick filtering
+  category       String   // "Food" or "Drink"
+  
+  claimedAt      DateTime @default(now())
+  
+  // Device/Operator info
+  deviceName     String?
+  operatorId     String?
+  
+  scanLog        ScanLog?
+  
+  @@index([eventId])
+  @@index([participantId])
+  @@index([boothId])
+  @@index([menuItemId])
+  @@index([claimedAt])
+  @@index([category])
+}
+
+// =====================================================
+// SCAN LOGS (Audit Trail)
+// =====================================================
+
+model ScanLog {
+  id             String   @id @default(cuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId  String?
+  participant    Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  
+  scanType       String   // "checkin", "food_claim", "drink_claim"
+  scanResult     String   // "success", "failed", "duplicate", "limit_reached", "invalid_qr", "not_checked_in"
+  message        String?
+  
+  // Context
+  boothId        String?
+  deskNumber     Int?
+  deviceName     String?
+  operatorId     String?
+  ipAddress      String?
+  
+  // Relations to specific records
+  checkIn        CheckIn?  @relation(fields: [checkInId], references: [id], onDelete: SetNull)
+  checkInId      String?   @unique
+  claim          Claim?    @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  claimId        String?   @unique
+  
+  scannedAt      DateTime  @default(now())
+  
+  @@index([eventId])
+  @@index([participantId])
+  @@index([scanType])
+  @@index([scanResult])
+  @@index([scannedAt])
+}
+
+// =====================================================
+// EVENT STATS (Dashboard Cache)
+// =====================================================
+
+model EventStats {
+  id                String   @id @default(cuid())
+  eventId           String   @unique
+  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  // Participant stats
+  totalParticipants Int      @default(0)
+  totalCheckIns     Int      @default(0)
+  totalNotCheckedIn Int      @default(0)
+  
+  // Claim stats
+  totalFoodClaims   Int      @default(0)
+  totalDrinkClaims  Int      @default(0)
+  totalClaims       Int      @default(0)
+  
+  // Desk stats
+  desk1CheckIns     Int      @default(0)
+  desk2CheckIns     Int      @default(0)
+  desk3CheckIns     Int      @default(0)
+  desk4CheckIns     Int      @default(0)
+  
+  // Last update
+  updatedAt         DateTime @updatedAt
+  
+  @@index([eventId])
+}
+
+// =====================================================
+// ANNOUNCEMENTS (Landing Page)
+// =====================================================
+
+model Announcement {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  title       String
+  content     String
+  type        String   @default("info") // "info", "important", "warning", "update"
+  priority    Int      @default(0)  // Higher = more important
+  
+  // Display settings
+  isPinned    Boolean  @default(false)
+  showOnLanding Boolean @default(true)
+  
+  // Schedule
+  publishAt   DateTime @default(now())
+  expiresAt   DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([eventId])
+  @@index([isPinned])
+  @@index([showOnLanding])
+  @@index([publishAt])
+}
+
+// =====================================================
+// SCHEDULES (Event Agenda)
+// =====================================================
+
+model Schedule {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime?
+  location    String?  // Room/stage name
+  speaker     String?  // Speaker name
+  speakerTitle String? // Speaker title/role
+  
+  // Display order
+  order       Int      @default(0)
+  
+  // Category for grouping
+  category    String?  // "Keynote", "Workshop", "Break", etc.
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([eventId])
+  @@index([startTime])
+  @@index([category])
+}
+
+// =====================================================
+// SPONSORS (Event Partners)
+// =====================================================
+
+model Sponsor {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  name        String
+  logoUrl     String?
+  website     String?
+  
+  // Tier: "platinum", "gold", "silver", "bronze", "partner"
+  tier        String   @default("partner")
+  order       Int      @default(0)
+  
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([eventId])
+  @@index([tier])
+  @@index([isActive])
+}
+
+// =====================================================
+// SETTINGS (App Configuration)
+// =====================================================
+
+model Setting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   // JSON string for complex values
+  description String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([key])
+}
