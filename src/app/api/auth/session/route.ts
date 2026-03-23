@@ -16,16 +16,6 @@ export async function GET(request: NextRequest) {
 
     const user = await db.adminUser.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        eventId: true,
-        assignedType: true,
-        assignedId: true,
-        isActive: true,
-      }
     })
 
     if (!user || !user.isActive) {
